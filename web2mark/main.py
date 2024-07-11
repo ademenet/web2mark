@@ -1,5 +1,6 @@
 import os
 import subprocess
+from datetime import datetime
 
 import typer
 from scrapy.crawler import CrawlerProcess
@@ -34,15 +35,28 @@ class MySpider(Spider):
         content = content.replace("* ```", "```")
         return content
 
+    def add_headers_to_content(self, content, url):
+        return (
+            f"---\nurl: {url}\nadded: {datetime.now().isoformat()}\ntags: scrapped\n---\n\n"
+            + content
+        )
+
     def parse(self, response):
+        if response.url.split("/")[2] != self.start_urls[0].split("/")[2]:
+            return
+
         content = md(response.css("body").get(), heading_style="ATX")
 
         content = self.clean_markdown(content)
 
-        filename = f"{response.url.split('/')[-2]}.md"
+        filename = (
+            f"{response.url.replace(self.start_urls[0], "").replace("/", ".")}.md"
+        )
 
         if not os.path.exists(self.folder):
             os.makedirs(self.folder)
+
+        content = self.add_headers_to_content(content, response.url)
 
         with open(f"{self.folder}/{filename}", "w") as f:
             f.write(content)
@@ -63,8 +77,10 @@ class MySpider(Spider):
 
         if self.depth > 0:
             for link in response.css("a::attr(href)").getall():
-                if link.startswith("/") and self.depth > 1:
+                try:
                     yield response.follow(link, self.parse)
+                except Exception as e:
+                    pass
 
 
 def main(
@@ -94,7 +110,10 @@ def main(
             prettify=prettify,
             verbose=verbose,
         )
-        process.start()
+        try:
+            process.start()
+        except:
+            pass
 
 
 if __name__ == "__main__":
